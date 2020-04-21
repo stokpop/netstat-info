@@ -8,7 +8,7 @@ Produce some netstat -an files for instance as follows:
     
 Now have the netstat-info jar file available:
 
-    curl -s -o netstat-info.jar https://github.com/stokpop/netstat-info/releases/download/1.0.0/netstat-info-1.0.0-all.jar
+    curl -s -L -o netstat-info.jar https://github.com/stokpop/netstat-info/releases/download/1.0.0/netstat-info-1.0.0-all.jar
 
 Create a mapper file to map ip's to known names, for instance `netstat.mapper`:
  
