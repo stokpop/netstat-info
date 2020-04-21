@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "nl.stokpop"
-version = "1.0-SNAPSHOT"
+version = "1.0.0"
 
 application {
     mainClassName = "nl.stokpop.NetstatInfoKt"
