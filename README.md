@@ -64,6 +64,14 @@ When you supply directories instead of file names, all files in the directory wi
 and reports and/or compares are generated for all found netstat files. Example:
 
     java -jar netstat-info.jar report netstat.1.info netstat.2.info netstat.mapper
+
+# generate multiple netstat dump
+
+Use this for 10 dumps that are 50 seconds apart:
+
+    for i in {1..10}; do netstat -an > netstat.$(hostname -s).$(date +%FT%H-%M-%S); sleep 50; done
+
+Note: on linux you can also use `netstat -ant` to only have tcp proto lines in your dumps.
     
 # build
 
