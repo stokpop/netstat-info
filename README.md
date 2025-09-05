@@ -18,6 +18,12 @@ Create a mapper file to map ip's to known names, for instance `netstat.mapper`:
 Run netstat-info with the files:
 
     java -jar netstat-info.jar report netstat.1.info netstat.mapper
+
+The command is:
+
+    java -jar netstat-info.jar <report|compare> <netstat-filename> [mapper-filename]
+
+The mapper file is optional.
     
 This will show a report like:
 
@@ -81,6 +87,6 @@ To build executable jar:
     
 The jar is here:
 
-    ./build/libs/netstat-info-1.0-all.jar
+    ./build/libs/netstat-info-1.0.0-all.jar
     
          

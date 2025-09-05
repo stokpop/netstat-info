@@ -20,16 +20,20 @@ fun main(args: Array<String>) {
 }
 
 private fun report(args: Array<String>) {
-    if (args.size != 3) {
-        println("provide filename or directory and mapper filename")
+    if (! (args.size == 2 || args.size == 3) ) {
+        println("provide filename or directory and optional mapper filename")
         exitProcess(1)
     }
 
-    val mapperFilename = args[2]
-    val mappers = readMappers(mapperFilename)
-
     val netstatFilename = args[1]
     val file = File(netstatFilename)
+
+    val mappers = if (args.size == 3) {
+            val mapperFilename = args[2]
+            readMappers(mapperFilename)
+        }
+        else emptyMap()
+
     if (file.isFile) {
         processFile(file, mappers)
     } else {
@@ -40,8 +44,8 @@ private fun report(args: Array<String>) {
 }
 
 fun compare(args: Array<String>) {
-    if (args.size != 5) {
-        println("provide port number and two filenames or dirs and a mapper file")
+    if (! (args.size == 4 || args.size == 5)) {
+        println("provide port number and two filenames or dirs and optional mapper file")
         exitProcess(1)
     }
 
@@ -49,8 +53,11 @@ fun compare(args: Array<String>) {
     val filename1 = args[2]
     val filename2 = args[3]
 
-    val mapperFilename = args[4]
-    val mappers = readMappers(mapperFilename)
+    val mappers = if (args.size == 5) {
+        val mapperFilename = args[4]
+        readMappers(mapperFilename)
+    }
+    else emptyMap()
 
     val file1 = File(filename1)
     val file2 = File(filename2)
@@ -176,18 +183,18 @@ fun statePerLocalAddress(
             .asSequence()
             .filter { it.state == state }
             .filter(predicate) // incoming connections only
-            .map(createIpwithPortName(mappers, direction))
+            .map(createIPwithPortName(mappers, direction))
             .groupingBy { it }
             .eachCount()
 }
 
-private fun createIpwithPortName(
+private fun createIPwithPortName(
         mappers: Map<String, String>,
         direction: TcpDirection
 ): (NetstatInfo) -> String {
     return {
-        val ip = mappers.getOrDefault(it.foreign.ip, it.foreign.ip)
-        if (direction == INCOMING) "I $ip(${it.local.port})" else "O $ip(${it.foreign.port})"
+        val ipRemote = mappers.getOrDefault(it.foreign.ip, it.foreign.ip)
+        if (direction == INCOMING) "I $ipRemote(${it.local.port})" else "O $ipRemote(${it.foreign.port})"
     }
 }
 
@@ -212,11 +219,10 @@ fun readTcpStates(file: File): List<NetstatInfo> {
     val lines = file.readLines()
 
     return lines
-            .filter { line -> line.startsWith("tcp ") || line.startsWith("tcp4 ") }
+            .filter { line -> line.startsWith("tcp ") || line.startsWith("tcp6 ") || line.startsWith("tcp4 ") }
             .map { line -> NetstatInfo.fromLine(line) }
             .toCollection(ArrayList())
 }
-
 
 data class NetstatInfo(
         val proto: String,
@@ -256,7 +262,15 @@ data class Address(val ip: String, val port: Int) {
         fun fromString(text: String): Address = run {
             // netstat on mac has . instead of : before port number
             val parseText = macToUnixNetstatIpAndPortFormat(text)
-            val split = parseText.split(":")
+            val countSemiCols = parseText.count { c -> c == ':' }
+            val split = if (countSemiCols == 1) {
+                parseText.split(":")
+            } else if (countSemiCols == 3) {
+                // example line: tcp6       0      0 :::8080                 :::*                    LISTEN
+                parseText.replace("::", "0.0.0.0").split(":")
+            } else {
+                throw RuntimeException("cannot parse address from: $text")
+            }
             if (split[1] == "*") {
                 Address(split[0], -1)
             } else {
@@ -269,14 +283,14 @@ data class Address(val ip: String, val port: Int) {
                 text
             } else {
                 val lastIndexOfDot = text.lastIndexOf('.')
-                text.substring(0, lastIndexOfDot) + ':' + text.substring(lastIndexOfDot + 1)
+                text.take(lastIndexOfDot) + ':' + text.substring(lastIndexOfDot + 1)
             }
         }
     }
 }
 
 enum class TcpState {
-    LISTEN, ESTABLISHED, TIME_WAIT, FIN_WAIT1, FIN_WAIT2, CLOSE_WAIT, SYN_RECV, SYN_SENT
+    LISTEN, ESTABLISHED, TIME_WAIT, FIN_WAIT1, FIN_WAIT2, CLOSE_WAIT, SYN_RECV, SYN_SENT, LAST_ACK
 }
 
 enum class TcpDirection {
