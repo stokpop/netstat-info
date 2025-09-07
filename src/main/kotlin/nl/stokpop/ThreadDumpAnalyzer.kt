@@ -52,7 +52,8 @@ class ThreadDumpAnalyzer {
         val platformCount: Int,
         val virtualCount: Int,
         val virtualWithoutStack: Int,
-        val groups: Map<String, GroupCount>
+        val groups: Map<String, GroupCount>,
+        val threadKeysById: Map<String, String>
     )
 
     data class GroupCount(
@@ -98,6 +99,7 @@ class ThreadDumpAnalyzer {
         var virtual = 0
         var virtualNoStack = 0
         val groups = mutableMapOf<String, GroupCount>()
+        val idToKey = mutableMapOf<String, String>()
 
         for (e in entries) {
             val matchingFrames = e.framesMatching(filter)
@@ -112,13 +114,14 @@ class ThreadDumpAnalyzer {
                 platform++
             }
             val key = e.normalizedKey(if (filter != null) matchingFrames else e.stack)
+            idToKey[e.id] = key
             val gc = groups.getOrPut(key) { GroupCount() }
             gc.total++
             if (e.isVirtual) gc.virtual++ else gc.platform++
         }
 
         val timestamp = extractTimestamp(file.name) ?: extractTimestampFromContent(lines) ?: file.name
-        return DumpResult(timestamp, platform, virtual, virtualNoStack, groups)
+        return DumpResult(timestamp, platform, virtual, virtualNoStack, groups, idToKey)
     }
 
     private fun extractTimestamp(filename: String): String? {
@@ -178,6 +181,30 @@ class ThreadDumpAnalyzer {
             }
             sb.append("\n")
             shown++
+        }
+
+        // New: Alive threads between consecutive dumps (same id and same normalized stack)
+        sb.append("Alive threads between consecutive dumps (same id + same stack):\n")
+        for (i in 0 until results.size - 1) {
+            val a = results[i]
+            val b = results[i + 1]
+            var count = 0
+            val examples = mutableListOf<String>()
+            for ((id, keyA) in a.threadKeysById) {
+                val keyB = b.threadKeysById[id]
+                if (keyB != null && keyB == keyA) {
+                    count++
+                    if (examples.size < 20) {
+                        examples.add("#${id} :: ${keyA}")
+                    }
+                }
+            }
+            sb.append("${a.timestamp} -> ${b.timestamp}: ${count} threads\n")
+            if (examples.isNotEmpty()) {
+                for (ex in examples) {
+                    sb.append("  ${ex}\n")
+                }
+            }
         }
         return sb.toString()
     }

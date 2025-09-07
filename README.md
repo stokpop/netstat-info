@@ -104,7 +104,9 @@ It will report per dump:
 - number of virtual threads without a stacktrace
 - top groups of similar threads (by normalized stacktrace)
 
-It also includes a cross-dump section to see if similar thread groups are still alive over time.
+It also includes:
+- a cross-dump section to see if similar thread groups are still alive over time;
+- and a section that shows threads that remain alive between consecutive dumps (same id and same stack), including counts and examples.
 
 # build
 
