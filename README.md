@@ -106,7 +106,8 @@ It will report per dump:
 
 It also includes:
 - a cross-dump section to see if similar thread groups are still alive over time;
-- and a section that shows threads that remain alive between consecutive dumps (same id and same stack), including counts and examples.
+- a section that shows threads that remain alive between consecutive dumps (same id and same stack), including counts and examples;
+- and a section that reports virtual threads that are still around (same id) but with different or no stack trace between consecutive dumps, including counts and examples.
 
 # build
 

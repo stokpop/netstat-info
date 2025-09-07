@@ -53,13 +53,19 @@ class ThreadDumpAnalyzer {
         val virtualCount: Int,
         val virtualWithoutStack: Int,
         val groups: Map<String, GroupCount>,
-        val threadKeysById: Map<String, String>
+        val threadInfoById: Map<String, ThreadInfo>
     )
 
     data class GroupCount(
         var total: Int = 0,
         var platform: Int = 0,
         var virtual: Int = 0
+    )
+
+    data class ThreadInfo(
+        val key: String,
+        val isVirtual: Boolean,
+        val hasStack: Boolean
     )
 
     fun parseDump(file: File, filter: Regex? = null): DumpResult {
@@ -99,7 +105,7 @@ class ThreadDumpAnalyzer {
         var virtual = 0
         var virtualNoStack = 0
         val groups = mutableMapOf<String, GroupCount>()
-        val idToKey = mutableMapOf<String, String>()
+        val idToInfo = mutableMapOf<String, ThreadInfo>()
 
         for (e in entries) {
             val matchingFrames = e.framesMatching(filter)
@@ -114,14 +120,14 @@ class ThreadDumpAnalyzer {
                 platform++
             }
             val key = e.normalizedKey(if (filter != null) matchingFrames else e.stack)
-            idToKey[e.id] = key
+            idToInfo[e.id] = ThreadInfo(key, e.isVirtual, e.hasStack)
             val gc = groups.getOrPut(key) { GroupCount() }
             gc.total++
             if (e.isVirtual) gc.virtual++ else gc.platform++
         }
 
         val timestamp = extractTimestamp(file.name) ?: extractTimestampFromContent(lines) ?: file.name
-        return DumpResult(timestamp, platform, virtual, virtualNoStack, groups, idToKey)
+        return DumpResult(timestamp, platform, virtual, virtualNoStack, groups, idToInfo)
     }
 
     private fun extractTimestamp(filename: String): String? {
@@ -190,16 +196,42 @@ class ThreadDumpAnalyzer {
             val b = results[i + 1]
             var count = 0
             val examples = mutableListOf<String>()
-            for ((id, keyA) in a.threadKeysById) {
-                val keyB = b.threadKeysById[id]
-                if (keyB != null && keyB == keyA) {
+            for ((id, infoA) in a.threadInfoById) {
+                val infoB = b.threadInfoById[id]
+                if (infoB != null && infoB.key == infoA.key) {
                     count++
                     if (examples.size < 20) {
-                        examples.add("#${id} :: ${keyA}")
+                        examples.add("#${id} :: ${infoA.key}")
                     }
                 }
             }
             sb.append("${a.timestamp} -> ${b.timestamp}: ${count} threads\n")
+            if (examples.isNotEmpty()) {
+                for (ex in examples) {
+                    sb.append("  ${ex}\n")
+                }
+            }
+        }
+
+        // New: Virtual threads alive with different or missing stack between consecutive dumps
+        sb.append("Virtual threads alive with different or missing stack (same id, stack changed):\n")
+        for (i in 0 until results.size - 1) {
+            val a = results[i]
+            val b = results[i + 1]
+            var count = 0
+            val examples = mutableListOf<String>()
+            for ((id, infoA) in a.threadInfoById) {
+                val infoB = b.threadInfoById[id]
+                if (infoB != null && infoA.isVirtual && infoB.isVirtual) {
+                    if (infoA.key != infoB.key) {
+                        count++
+                        if (examples.size < 20) {
+                            examples.add("#${id} :: ${infoA.key} -> ${infoB.key}")
+                        }
+                    }
+                }
+            }
+            sb.append("${a.timestamp} -> ${b.timestamp}: ${count} virtual threads\n")
             if (examples.isNotEmpty()) {
                 for (ex in examples) {
                     sb.append("  ${ex}\n")
