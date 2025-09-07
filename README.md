@@ -79,6 +79,27 @@ Use this for 10 dumps that are 50 seconds apart:
 
 Note: on linux you can also use `netstat -ant` to only have tcp proto lines in your dumps.
     
+# thread-dump analysis
+
+A simple analyzer for jcmd thread dumps is available.
+
+Usage examples:
+
+- Analyze all dumps in the default ./thread-dumps directory and print to stdout:
+
+      java -cp build/libs/netstat-info-1.0.0-all.jar nl.stokpop.ThreadDumpAnalyzer
+
+- Or specify input directory and output txt file:
+
+      java -cp build/libs/netstat-info-1.0.0-all.jar nl.stokpop.ThreadDumpAnalyzer thread-dumps thread-dumps-report.txt
+
+It will report per dump:
+- number of platform vs virtual threads
+- number of virtual threads without a stacktrace
+- top groups of similar threads (by normalized stacktrace)
+
+It also includes a cross-dump section to see if similar thread groups are still alive over time.
+
 # build
 
 To build executable jar:
