@@ -93,8 +93,14 @@ Usage examples:
 
       java -cp build/libs/netstat-info-1.0.0-all.jar nl.stokpop.ThreadDumpAnalyzer thread-dumps thread-dumps-report.txt
 
+- Filter report to stack frames containing a substring (case-insensitive), and only show matching lines in the group keys:
+
+      java -cp build/libs/netstat-info-1.0.0-all.jar nl.stokpop.ThreadDumpAnalyzer thread-dumps thread-dumps-report.txt --filter ecma
+
+  You can also use -f ecma or --filter=ecma.
+
 It will report per dump:
-- number of platform vs virtual threads
+- number of platform vs virtual threads (after filtering if a filter is applied)
 - number of virtual threads without a stacktrace
 - top groups of similar threads (by normalized stacktrace)
 

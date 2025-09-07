@@ -12,7 +12,7 @@ import java.time.format.DateTimeFormatter
  * - counts of virtual threads without a stacktrace
  *
  * Usage:
- *   kotlin -jar app.jar thread-dumps [output.txt]
+ *   java -cp build/libs/netstat-info-1.0.0-all.jar nl.stokpop.ThreadDumpAnalyzer [inputDir] [output.txt] [--filter <substring>]
  * If no args are given, defaults to ./thread-dumps and writes report to stdout.
  */
 class ThreadDumpAnalyzer {
@@ -23,10 +23,16 @@ class ThreadDumpAnalyzer {
         val stack: List<String>
     ) {
         val hasStack: Boolean get() = stack.isNotEmpty()
-        fun normalizedKey(): String {
+
+        fun framesMatching(filter: Regex?): List<String> {
+            if (filter == null) return stack
+            return stack.filter { it.contains(filter) }
+        }
+
+        fun normalizedKey(frames: List<String> = stack): String {
             // Normalize stack frames: keep method owner and method, strip line numbers and Unknown Source details
-            if (stack.isEmpty()) return "<empty>"
-            val normFrames = stack.map { frame ->
+            if (frames.isEmpty()) return "<empty>"
+            val normFrames = frames.map { frame ->
                 var f = frame.trim()
                 // remove leading numbers or bullets if any
                 f = f.replace("^at\\s+".toRegex(), "")
@@ -55,7 +61,7 @@ class ThreadDumpAnalyzer {
         var virtual: Int = 0
     )
 
-    fun parseDump(file: File): DumpResult {
+    fun parseDump(file: File, filter: Regex? = null): DumpResult {
         val lines = file.readLines()
         val entries = mutableListOf<ThreadEntry>()
 
@@ -94,13 +100,18 @@ class ThreadDumpAnalyzer {
         val groups = mutableMapOf<String, GroupCount>()
 
         for (e in entries) {
+            val matchingFrames = e.framesMatching(filter)
+            // If a filter is provided, only include threads that have at least one matching frame.
+            if (filter != null && matchingFrames.isEmpty()) continue
+
             if (e.isVirtual) {
                 virtual++
+                // In filtered mode, count virtual without stacktrace only if there are no frames at all.
                 if (!e.hasStack) virtualNoStack++
             } else {
                 platform++
             }
-            val key = e.normalizedKey()
+            val key = e.normalizedKey(if (filter != null) matchingFrames else e.stack)
             val gc = groups.getOrPut(key) { GroupCount() }
             gc.total++
             if (e.isVirtual) gc.virtual++ else gc.platform++
@@ -128,15 +139,16 @@ class ThreadDumpAnalyzer {
         return lines.firstOrNull { it.matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}".toRegex()) }
     }
 
-    fun analyzeDirectory(dir: File): List<DumpResult> {
+    fun analyzeDirectory(dir: File, filter: Regex? = null): List<DumpResult> {
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".txt") }?.sortedBy { it.name } ?: emptyList()
-        return files.map { parseDump(it) }
+        return files.map { parseDump(it, filter) }
     }
 
-    fun makeReport(results: List<DumpResult>): String {
+    fun makeReport(results: List<DumpResult>, filterText: String? = null): String {
         if (results.isEmpty()) return "No thread dumps found."
         val sb = StringBuilder()
         sb.append("Thread-dump analysis report\n")
+        filterText?.let { sb.append("Filter: '$it' (case-insensitive substring)\n") }
         sb.append("\n")
         for (r in results) {
             sb.append("Dump: ${r.timestamp}\n")
@@ -173,15 +185,41 @@ class ThreadDumpAnalyzer {
     companion object {
         @JvmStatic
         fun main(args: Array<String>) {
-            val dir = if (args.isNotEmpty()) File(args[0]) else File("thread-dumps")
-            val outFile = if (args.size >= 2) File(args[1]) else null
-            if (!dir.exists() || !dir.isDirectory) {
-                System.err.println("Directory not found: ${dir.absolutePath}")
+            var dir: File? = null
+            var outFile: File? = null
+            var filterText: String? = null
+
+            var i = 0
+            while (i < args.size) {
+                val arg = args[i]
+                when {
+                    arg == "--filter" || arg == "-f" -> {
+                        if (i + 1 < args.size) {
+                            filterText = args[i + 1]
+                            i += 1
+                        }
+                    }
+                    arg.startsWith("--filter=") -> {
+                        filterText = arg.substringAfter("=")
+                    }
+                    dir == null -> dir = File(arg)
+                    outFile == null -> outFile = File(arg)
+                    else -> { /* ignore extra args */ }
+                }
+                i += 1
+            }
+
+            val directory = dir ?: File("thread-dumps")
+            if (!directory.exists() || !directory.isDirectory) {
+                System.err.println("Directory not found: ${directory.absolutePath}")
                 return
             }
+
+            val filterRegex = filterText?.let { Regex(Regex.escape(it), RegexOption.IGNORE_CASE) }
+
             val analyzer = ThreadDumpAnalyzer()
-            val results = analyzer.analyzeDirectory(dir)
-            val report = analyzer.makeReport(results)
+            val results = analyzer.analyzeDirectory(directory, filterRegex)
+            val report = analyzer.makeReport(results, filterText)
             if (outFile != null) {
                 outFile.writeText(report)
                 println("Report written to: ${outFile.absolutePath}")
