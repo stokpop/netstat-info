@@ -101,6 +101,7 @@ Usage examples:
 
 It will report per dump:
 - number of platform vs virtual threads (after filtering if a filter is applied)
+- number of carrier threads (platform threads acting as carriers for virtual threads)
 - number of virtual threads without a stacktrace
 - top groups of similar threads (by normalized stacktrace)
 

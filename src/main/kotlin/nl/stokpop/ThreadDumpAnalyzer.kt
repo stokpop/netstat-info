@@ -52,6 +52,7 @@ class ThreadDumpAnalyzer {
         val platformCount: Int,
         val virtualCount: Int,
         val virtualWithoutStack: Int,
+        val carrierCount: Int,
         val groups: Map<String, GroupCount>,
         val threadInfoById: Map<String, ThreadInfo>
     )
@@ -104,6 +105,7 @@ class ThreadDumpAnalyzer {
         var platform = 0
         var virtual = 0
         var virtualNoStack = 0
+        var carrier = 0
         val groups = mutableMapOf<String, GroupCount>()
         val idToInfo = mutableMapOf<String, ThreadInfo>()
 
@@ -119,7 +121,18 @@ class ThreadDumpAnalyzer {
             } else {
                 platform++
             }
-            val key = e.normalizedKey(if (filter != null) matchingFrames else e.stack)
+            val framesForDetection = if (filter != null) matchingFrames else e.stack
+            val key = e.normalizedKey(framesForDetection)
+            if (!e.isVirtual) {
+                // Heuristic: platform threads acting as carrier threads typically show these frames
+                if (framesForDetection.any { frame ->
+                        frame.contains("jdk.internal.vm.Continuation.run") ||
+                        frame.contains("java.lang.VirtualThread.runContinuation") ||
+                        frame.contains("java.lang.VirtualThread.run")
+                    }) {
+                    carrier++
+                }
+            }
             idToInfo[e.id] = ThreadInfo(key, e.isVirtual, e.hasStack)
             val gc = groups.getOrPut(key) { GroupCount() }
             gc.total++
@@ -127,7 +140,7 @@ class ThreadDumpAnalyzer {
         }
 
         val timestamp = extractTimestamp(file.name) ?: extractTimestampFromContent(lines) ?: file.name
-        return DumpResult(timestamp, platform, virtual, virtualNoStack, groups, idToInfo)
+        return DumpResult(timestamp, platform, virtual, virtualNoStack, carrier, groups, idToInfo)
     }
 
     private fun extractTimestamp(filename: String): String? {
@@ -164,6 +177,7 @@ class ThreadDumpAnalyzer {
             sb.append("  Platform threads: ${r.platformCount}\n")
             sb.append("  Virtual threads:  ${r.virtualCount}\n")
             sb.append("  Virtual w/o stacktrace: ${r.virtualWithoutStack}\n")
+            sb.append("  Carrier threads: ${r.carrierCount}\n")
             sb.append("  Groups (by normalized stacktrace): ${r.groups.size}\n")
             // show top 10 groups by total count
             val top = r.groups.entries.sortedByDescending { it.value.total }.take(10)
