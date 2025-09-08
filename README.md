@@ -83,6 +83,10 @@ Note: on linux you can also use `netstat -ant` to only have tcp proto lines in y
 
 A simple analyzer for jcmd thread dumps is available.
 
+Use this command to create stacktraces with virtual threads stack dumps:
+
+    jcmd <pid> Thread.dump_to_file -format=text thread-dump-<pid>-$(date +%Y-%m-%dT%H-%M-%S).txt
+
 Usage examples:
 
 - Analyze all dumps in the default ./thread-dumps directory and print to stdout:

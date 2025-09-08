@@ -4,6 +4,13 @@ import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+private val THREAD_ID_REGEX = "#(\\S+)".toRegex()
+private val THREAD_NAME_REGEX = "\"(.*?)\"".toRegex()
+
+private val STACK_LINE_AT_REGEX = "^at\\s+".toRegex()
+private val STACK_LINE_X = "\\(.*?\\)".toRegex()
+private val MULTIPLE_SPACES_REGEX = "\\s+".toRegex()
+
 /**
  * Parses JDK jcmd style thread-dumps (JDK 21+) and aggregates:
  * - counts of platform vs virtual threads
@@ -35,11 +42,11 @@ class ThreadDumpAnalyzer {
             val normFrames = frames.map { frame ->
                 var f = frame.trim()
                 // remove leading numbers or bullets if any
-                f = f.replace("^at\\s+".toRegex(), "")
+                f = f.replace(STACK_LINE_AT_REGEX, "")
                 // remove line numbers like (:123) or (Foo.java:123) or (Unknown Source)
-                f = f.replace("\\(.*?\\)".toRegex(), "")
+                f = f.replace(STACK_LINE_X, "")
                 // collapse multiple spaces and slashes
-                f = f.replace("\\s+".toRegex(), " ")
+                f = f.replace(MULTIPLE_SPACES_REGEX, " ")
                 // keep first token like package.Class.method
                 f
             }
@@ -66,7 +73,8 @@ class ThreadDumpAnalyzer {
     data class ThreadInfo(
         val key: String,
         val isVirtual: Boolean,
-        val hasStack: Boolean
+        val hasStack: Boolean,
+        val name: String
     )
 
     fun parseDump(file: File, filter: Regex? = null): DumpResult {
@@ -80,9 +88,9 @@ class ThreadDumpAnalyzer {
                 // Header example: #97407 "tomcat-handler-2093" virtual
                 val header = line
                 val isVirtual = header.contains(" virtual")
-                val idMatch = "#(\\S+)".toRegex().find(header)
+                val idMatch = THREAD_ID_REGEX.find(header)
                 val id = idMatch?.groupValues?.get(1) ?: "?"
-                val nameMatch = "\"(.*?)\"".toRegex().find(header)
+                val nameMatch = THREAD_NAME_REGEX.find(header)
                 val name = nameMatch?.groupValues?.get(1) ?: "?"
                 // collect subsequent indented stack lines until blank line or next header
                 val stack = mutableListOf<String>()
@@ -133,7 +141,7 @@ class ThreadDumpAnalyzer {
                     carrier++
                 }
             }
-            idToInfo[e.id] = ThreadInfo(key, e.isVirtual, e.hasStack)
+            idToInfo[e.id] = ThreadInfo(key, e.isVirtual, e.hasStack, e.name)
             val gc = groups.getOrPut(key) { GroupCount() }
             gc.total++
             if (e.isVirtual) gc.virtual++ else gc.platform++
@@ -177,7 +185,7 @@ class ThreadDumpAnalyzer {
             sb.append("  Platform threads: ${r.platformCount}\n")
             sb.append("  Virtual threads:  ${r.virtualCount}\n")
             sb.append("  Virtual w/o stacktrace: ${r.virtualWithoutStack}\n")
-            sb.append("  Carrier threads: ${r.carrierCount}\n")
+            sb.append("  Carrier threads active: ${r.carrierCount}\n")
             sb.append("  Groups (by normalized stacktrace): ${r.groups.size}\n")
             // show top 10 groups by total count
             val top = r.groups.entries.sortedByDescending { it.value.total }.take(10)
@@ -203,7 +211,7 @@ class ThreadDumpAnalyzer {
             shown++
         }
 
-        // New: Alive threads between consecutive dumps (same id and same normalized stack)
+        // Alive threads between consecutive dumps (same id and same normalized stack)
         sb.append("Alive threads between consecutive dumps (same id + same stack):\n")
         for (i in 0 until results.size - 1) {
             val a = results[i]
@@ -215,7 +223,7 @@ class ThreadDumpAnalyzer {
                 if (infoB != null && infoB.key == infoA.key) {
                     count++
                     if (examples.size < 20) {
-                        examples.add("#${id} :: ${infoA.key}")
+                        examples.add("#${id} \"${infoA.name}\" ${if (infoA.isVirtual) "virtual" else "platform"} :: ${infoA.key}")
                     }
                 }
             }
@@ -227,7 +235,7 @@ class ThreadDumpAnalyzer {
             }
         }
 
-        // New: Virtual threads alive with different or missing stack between consecutive dumps
+        // Virtual threads alive with different or missing stack between consecutive dumps
         sb.append("Virtual threads alive with different or missing stack (same id, stack changed):\n")
         for (i in 0 until results.size - 1) {
             val a = results[i]
@@ -240,7 +248,7 @@ class ThreadDumpAnalyzer {
                     if (infoA.key != infoB.key) {
                         count++
                         if (examples.size < 20) {
-                            examples.add("#${id} :: ${infoA.key} -> ${infoB.key}")
+                            examples.add("#${id} \"${infoA.name}\" virtual :: ${infoA.key} -> ${infoB.key}")
                         }
                     }
                 }
